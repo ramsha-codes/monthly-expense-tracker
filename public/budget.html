@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Budget Setup - Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Floating Edit Button */
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .edit-btn {
+            background-color: #f59e0b; /* Amber */
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+
+        .edit-btn:hover {
+            background-color: #d97706;
+        }
+
+        .edit-btn:disabled {
+            background-color: #cbd5e1;
+            cursor: not-allowed;
+        }
+
+        /* View Mode Styles */
+        body.view-mode input {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            color: #64748b;
+            pointer-events: none; /* Prevent clicking */
+        }
+
+        body.view-mode .btn-add-cat,
+        body.view-mode .btn-save {
+            display: none;
+        }
+        
+        /* Make sure text is readable in view mode */
+        body.view-mode input[type="text"],
+        body.view-mode input[type="number"],
+        body.view-mode input[type="month"] {
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <aside class="sidebar">
+        <h2>Expense<br>Tracker</h2>
+        <nav>
+            <a href="dashboard.html">📊 Dashboard</a>
+            <a href="add_expense.html">➕ Add Expense</a>
+            <a href="budget.html" class="active">💰 Budget Setup</a>
+            <a href="history.html">📅 History</a>
+        </nav>
+        <!-- Added Logout Button -->
+        <div class="sidebar-footer">
+            <a href="../php/logout.php" class="logout-btn">Logout</a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Monthly Budget Setup</h1>
+            <!-- Edit Button (Hidden by default, shown if budget exists) -->
+            <button id="editBtn" class="edit-btn" onclick="enableEditMode()" style="display: none;">
+                ✏️ Edit Budget
+            </button>
+        </div>
+
+        <div class="card">
+            <p style="margin-bottom: 20px; color: #64748b;" id="statusMsg">
+                Create a new budget for a specific month. This will set your spending limits.
+            </p>
+
+            <form id="budgetForm" action="../php/save_budget.php" method="POST" autocomplete="off">
+
+                <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Budget Month</label>
+                        <input type="month" id="budgetMonth" name="budget_month" required autocomplete="off">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Total Budget Limit (Rs)</label>
+                        <input type="number" id="totalAmount" name="total_amount" min="1" required placeholder="e.g. 5000" autocomplete="off">
+                    </div>
+                </div>
+
+                <h3>Category Allocations</h3>
+                <div style="overflow-x: auto; margin-top: 10px;">
+                    <table id="categoryTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 60%;">Category Name</th>
+                                <th>Allocated Amount (Rs)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="catTableBody">
+                            <!-- Placeholder -->
+                            <tr><td colspan="2" style="text-align:center; padding:20px;">Loading categories...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 20px; display: flex; justify-content: space-between;">
+                    <button type="button" class="btn btn-secondary btn-add-cat" onclick="addCategory()">+ Add Custom Category</button>
+                    <button type="submit" class="btn btn-primary btn-save">Save & Activate Budget</button>
+                </div>
+            </form>
+        </div>
+    </main>
+</div>
+
+<script>
+// Check for existing budget on load
+document.addEventListener('DOMContentLoaded', loadBudgetDetails);
+
+function loadBudgetDetails() {
+    fetch('../php/get_budget_details.php')
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('catTableBody');
+            tbody.innerHTML = ''; // Clear loading message
+
+            // 1. Populate Table (Works for both Existing Budget AND New Setup)
+            if (data.categories && data.categories.length > 0) {
+                data.categories.forEach(cat => {
+                    const row = document.createElement('tr');
+                    // If new setup, allocated_amount will be 0
+                    const val = parseFloat(cat.allocated_amount) > 0 ? parseFloat(cat.allocated_amount) : '';
+                    
+                    row.innerHTML = `
+                        <td>
+                            <input type="text" name="category_name[]" value="${cat.name}" required autocomplete="off">
+                        </td>
+                        <td>
+                            <input type="number" name="allocated_amount[]" value="${val}" min="0" required placeholder="0.00" autocomplete="off">
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } else {
+                // If strictly NO categories found anywhere, show empty row
+                addCategory();
+            }
+
+            // 2. Handle View Mode (Only if Active Budget Exists)
+            if (data.found && data.budget) {
+                // Populate Header Info
+                const b = data.budget;
+                document.getElementById('budgetMonth').value = b.budget_month.substring(0, 7);
+                document.getElementById('totalAmount').value = parseFloat(b.total_amount);
+
+                // Lock UI
+                disableEditMode();
+                document.getElementById('statusMsg').textContent = "Current Active Budget (Read-Only)";
+                document.getElementById('editBtn').style.display = 'flex';
+            } else {
+                // New Setup Mode
+                document.getElementById('statusMsg').textContent = "Setup a new budget. We pre-loaded your existing categories.";
+                
+                // Pre-fill current month if empty
+                if (!document.getElementById('budgetMonth').value) {
+                    const now = new Date();
+                    const monthStr = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+                    document.getElementById('budgetMonth').value = monthStr;
+                }
+            }
+        })
+        .catch(err => {
+            console.error("Error loading budget:", err);
+            // Fallback
+            addCategory(); 
+        });
+}
+
+function disableEditMode() {
+    document.body.classList.add('view-mode');
+    const inputs = document.getElementById('budgetForm').querySelectorAll('input');
+    inputs.forEach(input => input.disabled = true);
+}
+
+function enableEditMode() {
+    document.body.classList.remove('view-mode');
+    const inputs = document.getElementById('budgetForm').querySelectorAll('input');
+    inputs.forEach(input => input.disabled = false);
+    
+    document.getElementById('editBtn').style.display = 'none';
+    document.getElementById('statusMsg').textContent = "Editing Mode: Make changes and click Save to update.";
+}
+
+function addCategory() {
+    const table = document.getElementById("categoryTable").getElementsByTagName('tbody')[0];
+    const row = table.insertRow(-1);
+
+    const cell1 = row.insertCell(0);
+    const cell2 = row.insertCell(1);
+
+    cell1.innerHTML = `<input type="text" name="category_name[]" required placeholder="Enter category name" autocomplete="off">`;
+    cell2.innerHTML = `<input type="number" name="allocated_amount[]" min="0" required placeholder="0.00" autocomplete="off">`;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>History - Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .controls {
+            display: flex;
+            gap: 15px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            align-items: end;
+        }
+        .controls .form-group {
+            margin-bottom: 0;
+            flex: 1;
+            min-width: 150px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .pagination button {
+            background: white;
+            border: 1px solid #d1d5db;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Charts Grid (Same as Dashboard) */
+        .history-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        .chart-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            min-height: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <aside class="sidebar">
+        <h2>Expense<br>Tracker</h2>
+        <nav>
+            <a href="dashboard.html">📊 Dashboard</a>
+            <a href="add_expense.html">➕ Add Expense</a>
+            <a href="budget.html">💰 Budget Setup</a>
+            <a href="history.html" class="active">📅 History</a>
+        </nav>
+        <!-- Added Logout Button -->
+        <div class="sidebar-footer">
+            <a href="../php/logout.php" class="logout-btn">Logout</a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Expense History</h1>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="controls">
+            <div class="form-group">
+                <label>Select Month</label>
+                <input type="month" id="monthInput">
+            </div>
+            
+            <div class="form-group">
+                <label>Sort By</label>
+                <select id="sortBy">
+                    <option value="expense_date">Date</option>
+                    <option value="amount">Amount</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Order</label>
+                <select id="sortDir">
+                    <option value="DESC">Newest / Highest</option>
+                    <option value="ASC">Oldest / Lowest</option>
+                </select>
+            </div>
+
+            <button class="btn btn-primary" onclick="loadHistory(1)" style="height: 48px; align-self: flex-end;">Load Data</button>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="history-grid" id="chartsArea" style="display:none;">
+            <!-- Chart 1: Budget vs Actual Comparison -->
+            <div class="chart-card">
+                <h3 style="margin-bottom: 15px; color: #1e293b;">⚖️ Budget vs. Actual</h3>
+                <div class="chart-container">
+                    <canvas id="budgetCompChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Chart 2: Category Breakdown -->
+            <div class="chart-card">
+                <h3 style="margin-bottom: 15px; color: #1e293b;">📂 Category Breakdown</h3>
+                <div class="chart-container">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="card" style="padding: 0; overflow: hidden;">
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th style="text-align: right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="4" style="text-align:center; padding: 40px; color: #64748b;">
+                            Select a month above to view expenses
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+            <button id="prevBtn" onclick="changePage(-1)">⬅ Previous</button>
+            <span id="pageInfo" style="font-weight: 600; color: #4b5563;">Page 0 of 0</span>
+            <button id="nextBtn" onclick="changePage(1)">Next ➡</button>
+        </div>
+    </main>
+</div>
+
+<script>
+let currentPage = 1;
+let totalPages = 1;
+let budgetChart = null;
+let categoryChart = null;
+
+// Set default month to current
+document.getElementById('monthInput').value = new Date().toISOString().slice(0, 7);
+
+async function loadHistory(page = 1) {
+    const month = document.getElementById("monthInput").value;
+    const sortBy = document.getElementById("sortBy").value;
+    const sortDir = document.getElementById("sortDir").value;
+
+    if (!month) {
+        alert("Please select a month");
+        return;
+    }
+
+    try {
+        // 1. Fetch Table Data
+        const res = await fetch(`../php/get_expense_history.php?month=${month}&page=${page}&sortBy=${sortBy}&sortDir=${sortDir}`);
+        if (!res.ok) throw new Error(`Server returned ${res.status} ${res.statusText}`);
+        const data = await res.json();
+        
+        // 2. Render Table
+        const tbody = document.querySelector("#historyTable tbody");
+        tbody.innerHTML = "";
+
+        currentPage = data.page;
+        totalPages = data.totalPages;
+
+        document.getElementById("pageInfo").textContent = `Page ${currentPage} of ${totalPages}`;
+        document.getElementById("prevBtn").disabled = currentPage <= 1;
+        document.getElementById("nextBtn").disabled = currentPage >= totalPages;
+
+        if (!data.expenses || data.expenses.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding: 20px;'>No expenses found</td></tr>";
+            document.getElementById("chartsArea").style.display = "none";
+            return;
+        }
+
+        data.expenses.forEach(exp => {
+            const row = document.createElement("tr");
+            if (exp.is_overspent) {
+                row.classList.add("overspent");
+                row.title = "This expense exceeded the category allocation!";
+            }
+            row.innerHTML = `
+                <td>${exp.expense_date}</td>
+                <td><span style="background:#e0f2fe; color:#0369a1; padding:4px 8px; border-radius:4px; font-size:0.9em;">${exp.category}</span></td>
+                <td>${exp.description ?? "-"}</td>
+                <td style="text-align: right; font-weight:bold;">Rs ${parseFloat(exp.amount).toFixed(2)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        // 3. Load Charts (Only on first page load or specific request, here we do it every search)
+        if(page === 1) {
+            loadCharts(month);
+        }
+
+    } catch (err) {
+        console.error("Fetch error:", err);
+        // Error handling for preview mode or server failure
+    }
+}
+
+async function loadCharts(month) {
+    const chartsArea = document.getElementById("chartsArea");
+    
+    try {
+        // Fetch All Expenses for charts + Budget Details for that month
+        const [resExpenses, resBudget] = await Promise.all([
+            fetch(`../php/get_expense_history.php?mode=chart&month=${month}`),
+            fetch(`../php/get_budget_details.php?month=${month}`)
+        ]);
+
+        if (!resExpenses.ok) return; 
+        const allData = await resExpenses.json();
+        
+        let categoriesData = [];
+        if (resBudget.ok) {
+            const budgetJson = await resBudget.json();
+            categoriesData = budgetJson.categories || [];
+        }
+
+        if (Array.isArray(allData) && allData.length > 0) {
+            chartsArea.style.display = "grid"; // Show charts
+            
+            // Calculate Totals
+            const spentTotals = {};
+            allData.forEach(item => {
+                spentTotals[item.category] = (spentTotals[item.category] || 0) + parseFloat(item.amount);
+            });
+
+            renderBudgetCompChart(categoriesData, spentTotals);
+            renderCategoryChart(spentTotals);
+        } else {
+            chartsArea.style.display = "none";
+        }
+
+    } catch (err) {
+        console.error("Chart load error:", err);
+        chartsArea.style.display = "none";
+    }
+}
+
+function renderBudgetCompChart(budgetData, spentMap) {
+    if (budgetChart) budgetChart.destroy(); // Clear old chart
+
+    const allCategories = new Set([...budgetData.map(c => c.name), ...Object.keys(spentMap)]);
+    const labels = Array.from(allCategories);
+
+    const budgetValues = labels.map(catName => {
+        const cat = budgetData.find(c => c.name === catName);
+        return cat ? parseFloat(cat.allocated_amount) : 0;
+    });
+
+    const spentValues = labels.map(catName => spentMap[catName] || 0);
+
+    const ctx = document.getElementById("budgetCompChart").getContext("2d");
+    budgetChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: "Budget",
+                    data: budgetValues,
+                    backgroundColor: "#e2e8f0",
+                    barPercentage: 0.6
+                },
+                {
+                    label: "Actual",
+                    data: spentValues,
+                    backgroundColor: spentValues.map((val, i) => 
+                        val > budgetValues[i] && budgetValues[i] > 0 ? "#ef4444" : "#3b82f6"
+                    ),
+                    barPercentage: 0.6
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { 
+                y: { beginAtZero: true },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+function renderCategoryChart(spentMap) {
+    if (categoryChart) categoryChart.destroy();
+
+    const sortedCats = Object.entries(spentMap).sort((a,b) => b[1] - a[1]);
+    const labels = sortedCats.map(x => x[0]);
+    const values = sortedCats.map(x => x[1]);
+
+    const ctx = document.getElementById("categoryChart").getContext("2d");
+    categoryChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Spent",
+                data: values,
+                backgroundColor: "#3b82f6",
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            scales: { x: { beginAtZero: true } },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+function changePage(delta) {
+    const newPage = currentPage + delta;
+    if (newPage >= 1 && newPage <= totalPages) {
+        loadHistory(newPage);
+    }
+}
+
+// Initial load
+loadHistory(1);
+</script>
+
+</body>
+</html>

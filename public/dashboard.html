@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Specific Dashboard Layout Styles */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            min-height: 0; /* Important for Chart.js resizing */
+        }
+
+        .recent-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .recent-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .recent-table th { text-align: left; padding: 12px; background: #f8fafc; color: #64748b; font-size: 0.85rem; }
+        .recent-table td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; }
+        .recent-table tr:last-child td { border-bottom: none; }
+        
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <h2>Expense<br>Tracker</h2>
+        <nav>
+            <a href="dashboard.html" class="active">📊 Dashboard</a>
+            <a href="add_expense.html">➕ Add Expense</a>
+            <a href="budget.html">💰 Budget Setup</a>
+            <a href="history.html">📅 History</a>
+        </nav>
+        <!-- Added Logout Button -->
+        <div class="sidebar-footer">
+            <a href="../php/logout.php" class="logout-btn">Logout</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Dashboard Overview</h1>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card" style="border-left-color: #2563eb;">
+                <h3>Total Budget</h3>
+                <div class="value" id="val-budget">Rs 0.00</div>
+            </div>
+            <div class="summary-card" style="border-left-color: #ef4444;">
+                <h3>Total Spent</h3>
+                <div class="value" id="val-spent">Rs 0.00</div>
+            </div>
+            <div class="summary-card" style="border-left-color: #16a34a;">
+                <h3>Remaining</h3>
+                <div class="value" id="val-remaining">Rs 0.00</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="dashboard-grid">
+            <!-- Chart 1: Budget vs Actual Comparison -->
+            <div class="chart-card">
+                <h3 style="margin-bottom: 15px; color: #1e293b;">⚖️ Budget vs. Actual</h3>
+                <div class="chart-container">
+                    <canvas id="budgetCompChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Doughnut Chart: Categories -->
+            <div class="chart-card">
+                <h3 style="margin-bottom: 15px; color: #1e293b;">Spending by Category</h3>
+                <div class="chart-container" style="display:flex; justify-content:center;">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="recent-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="color: #1e293b;">Recent Transactions</h3>
+                <a href="history.html" style="font-size: 0.9rem; color: #2563eb; text-decoration: none;">View All &rarr;</a>
+            </div>
+            <table class="recent-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th style="text-align: right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody id="recentTableBody">
+                    <tr><td colspan="4" style="text-align:center; color:#94a3b8;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </main>
+</div>
+
+<script>
+// 1. Load Summary Numbers
+fetch('../php/get_dashboard_summary.php')
+    .then(res => res.json())
+    .then(data => {
+        const formatRs = (val) => 'Rs ' + Number(val).toLocaleString('en-IN', {minimumFractionDigits: 2});
+        document.getElementById('val-budget').textContent = formatRs(data.total_budget);
+        document.getElementById('val-spent').textContent = formatRs(data.total_spent);
+        document.getElementById('val-remaining').textContent = formatRs(data.remaining);
+    })
+    .catch(err => console.error("Summary Error:", err));
+
+// 2. Load Charts & Data
+(async function loadDashboardData() {
+    const now = new Date();
+    const month = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+    
+    try {
+        // --- FETCH ALL DATA IN PARALLEL ---
+        // We now fetch expenses AND budget details to compare them
+        const [resExpenses, resBudget] = await Promise.all([
+            fetch(`../php/get_expense_history.php?mode=chart&month=${month}`),
+            fetch(`../php/get_budget_details.php`)
+        ]);
+
+        if (!resExpenses.ok) throw new Error("Backend Error (Expenses)");
+        const allData = await resExpenses.json();
+        
+        let categoriesData = [];
+        if (resBudget.ok) {
+            const budgetJson = await resBudget.json();
+            categoriesData = budgetJson.categories || [];
+        }
+
+        if (Array.isArray(allData) && allData.length > 0) {
+            // Process totals for charts
+            const spentTotals = {};
+            allData.forEach(item => {
+                spentTotals[item.category] = (spentTotals[item.category] || 0) + parseFloat(item.amount);
+            });
+
+            renderBudgetCompChart(categoriesData, spentTotals);
+            renderCategoryChart(allData);
+        } else {
+            // No data handling
+            document.querySelectorAll('.chart-container').forEach(el => 
+                el.innerHTML = "<p style='color:#94a3b8; text-align:center; margin-top:50px;'>No data for this month</p>"
+            );
+        }
+
+        // --- FETCH RECENT TABLE (First 5 items) ---
+        const resRecent = await fetch(`../php/get_expense_history.php?page=1&pageSize=5&month=${month}`);
+        if (!resRecent.ok) throw new Error("Backend Error");
+        const recentData = await resRecent.json();
+        renderRecentTable(recentData.expenses || []);
+
+    } catch (err) {
+        console.error("Dashboard Load Error:", err);
+    }
+})();
+
+// --- Helper: Budget vs Actual Chart (Bar) ---
+function renderBudgetCompChart(budgetData, spentMap) {
+    // 1. Prepare Labels: Union of Budget Categories and Actual Spent Categories
+    const allCategories = new Set([
+        ...budgetData.map(c => c.name), 
+        ...Object.keys(spentMap)
+    ]);
+    const labels = Array.from(allCategories);
+
+    // 2. Map data to labels
+    const budgetValues = labels.map(catName => {
+        const cat = budgetData.find(c => c.name === catName);
+        return cat ? parseFloat(cat.allocated_amount) : 0;
+    });
+
+    const spentValues = labels.map(catName => spentMap[catName] || 0);
+
+    const ctx = document.getElementById("budgetCompChart").getContext("2d");
+    new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: "Allocated Budget",
+                    data: budgetValues,
+                    backgroundColor: "#e2e8f0", // Light Gray
+                    borderColor: "#cbd5e1",
+                    borderWidth: 1,
+                    barPercentage: 0.6,
+                    categoryPercentage: 0.8
+                },
+                {
+                    label: "Actual Spent",
+                    data: spentValues,
+                    backgroundColor: spentValues.map((val, i) => {
+                        // Turn RED if spent > budget (and budget is set)
+                        return val > budgetValues[i] && budgetValues[i] > 0 ? "#ef4444" : "#3b82f6";
+                    }),
+                    borderWidth: 0,
+                    barPercentage: 0.6,
+                    categoryPercentage: 0.8
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: "#f1f5f9" } },
+                x: { grid: { display: false } }
+            },
+            plugins: {
+                legend: { position: "top" },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ": Rs " + context.raw.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// --- Helper: Category Chart (Doughnut) ---
+function renderCategoryChart(data) {
+    const totals = {};
+    data.forEach(item => {
+        totals[item.category] = (totals[item.category] || 0) + parseFloat(item.amount);
+    });
+
+    const ctx = document.getElementById("categoryChart").getContext("2d");
+    new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: Object.keys(totals),
+            datasets: [{
+                data: Object.values(totals),
+                backgroundColor: ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: "right" } }
+        }
+    });
+}
+
+// --- Helper: Recent Table ---
+function renderRecentTable(expenses) {
+    const tbody = document.getElementById("recentTableBody");
+    if(!expenses.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">No recent activity</td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = expenses.slice(0, 5).map(exp => `
+        <tr>
+            <td style="color:#64748b;">${exp.expense_date}</td>
+            <td><span class="badge" style="background:#eff6ff; color:#1d4ed8;">${exp.category}</span></td>
+            <td>${exp.description || '-'}</td>
+            <td style="text-align:right; font-weight:600;">Rs ${parseFloat(exp.amount).toFixed(2)}</td>
+        </tr>
+    `).join('');
+}
+</script>
+
+</body>
+</html>

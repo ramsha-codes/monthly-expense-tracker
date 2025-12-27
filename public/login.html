@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        // Check if user is already logged in
+        fetch('../php/check_auth.php')
+            .then(res => res.json())
+            .then(data => {
+                if (data.logged_in) {
+                    window.location.replace('dashboard.html');
+                }
+            })
+            .catch(err => console.error("Auth check failed", err));
+    </script>
+</head>
+<body class="auth-body">
+
+    <div class="auth-card">
+        <h2>Welcome Back</h2>
+        
+        <form action="../php/login.php" method="POST" autocomplete="off">
+            <div class="form-group">
+                <label>Email Address</label>
+                <!-- autocomplete="off" prevents email history dropdown -->
+                <input type="email" name="email" required placeholder="Enter your email" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <!-- autocomplete="new-password" prevents password managers from autofilling aggressively if undesired -->
+                <input type="password" name="password" required placeholder="Enter your password" autocomplete="new-password">
+            </div>
+
+            <button type="submit">Login</button>
+        </form>
+
+        <div class="auth-link">
+            Don't have an account? <a href="signup.html">Sign up</a>
+        </div>
+    </div>
+
+</body>
+</html>

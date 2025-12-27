@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Monthly Expense History</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f6f7f9;
+            padding: 30px;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+        }
+
+        input[type="month"] {
+            padding: 6px;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #f0f0f0;
+        }
+
+        .amount {
+            font-weight: bold;
+        }
+
+        .empty {
+            padding: 15px;
+            background: #fff;
+            color: #777;
+        }
+
+        .back {
+            margin-bottom: 15px;
+            display: inline-block;
+            text-decoration: none;
+            color: #0066cc;
+        }
+    </style>
+</head>
+<body>
+
+<a href="dashboard.html" class="back">⬅ Back to Dashboard</a>
+
+<h2>📅 Monthly Expense History</h2>
+
+<div class="controls">
+    <label><strong>Select Month:</strong></label><br>
+    <input type="month" id="monthPicker">
+</div>
+
+<table id="expenseTable" style="display:none;">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Category</th>
+            <th>Amount</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody id="expenseBody"></tbody>
+</table>
+
+<div id="emptyState" class="empty" style="display:none;">
+    No expenses found for this month.
+</div>
+
+<script>
+const monthPicker = document.getElementById("monthPicker");
+const table = document.getElementById("expenseTable");
+const body = document.getElementById("expenseBody");
+const empty = document.getElementById("emptyState");
+
+// Default = current month
+const now = new Date();
+monthPicker.value = now.toISOString().slice(0, 7);
+loadExpenses(monthPicker.value);
+
+monthPicker.addEventListener("change", () => {
+    loadExpenses(monthPicker.value);
+});
+
+function loadExpenses(month) {
+    body.innerHTML = "";
+    table.style.display = "none";
+    empty.style.display = "none";
+
+    fetch(`../php/get_expenses_by_month.php?month=${month}`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.length) {
+                empty.style.display = "block";
+                return;
+            }
+
+            data.forEach(exp => {
+                const row = document.createElement("tr");
+
+                row.innerHTML = `
+                    <td>${exp.expense_date}</td>
+                    <td>${exp.category}</td>
+                    <td class="amount">${Number(exp.amount).toFixed(2)}</td>
+                    <td>${exp.description || ""}</td>
+                `;
+
+                body.appendChild(row);
+            });
+
+            table.style.display = "table";
+        })
+        .catch(() => {
+            empty.textContent = "Failed to load expenses.";
+            empty.style.display = "block";
+        });
+}
+</script>
+
+</body>
+</html>

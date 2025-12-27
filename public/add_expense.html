@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Add Expense - Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .mode-selector {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding: 5px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            width: fit-content;
+        }
+        
+        .mode-selector label {
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin-bottom: 0;
+            transition: all 0.2s;
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        .mode-selector input[type="radio"] {
+            display: none;
+        }
+
+        .mode-selector label:has(input:checked) {
+            background: white;
+            color: #2563eb;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-weight: 700;
+        }
+
+        #ocrSection {
+            display: none; /* Hidden by default for Manual Mode */
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Budget Info Box Styles */
+        #budgetInfo {
+            display: none; 
+            margin-top: 15px; 
+            padding: 15px; 
+            background: #f0fdf4; 
+            border: 1px solid #bbf7d0;
+            border-radius: 8px; 
+            font-size: 0.95rem; 
+            color: #166534;
+            transition: all 0.3s ease;
+        }
+        #budgetInfo.over-budget {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+        .budget-row {
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 5px;
+        }
+        .budget-row:last-child {
+            margin-bottom: 0;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            padding-top: 8px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <aside class="sidebar">
+        <h2>Expense<br>Tracker</h2>
+        <nav>
+            <a href="dashboard.html">📊 Dashboard</a>
+            <a href="add_expense.html" class="active">➕ Add Expense</a>
+            <a href="budget.html">💰 Budget Setup</a>
+            <a href="history.html">📅 History</a>
+        </nav>
+        <!-- Added Logout Button -->
+        <div class="sidebar-footer">
+            <a href="../php/logout.php" class="logout-btn">Logout</a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Add New Expense</h1>
+        </div>
+
+        <div class="card" style="max-width: 800px;">
+            
+            <!-- Mode Toggle -->
+            <div class="mode-selector">
+                <label>
+                    <input type="radio" name="mode" value="manual" checked onchange="toggleMode()">
+                    📝 Manual Entry
+                </label>
+                <label>
+                    <input type="radio" name="mode" value="ocr" onchange="toggleMode()">
+                    📄 Upload Receipt (OCR)
+                </label>
+            </div>
+
+            <form action="../php/save_expense.php" method="POST" enctype="multipart/form-data" autocomplete="off">
+                
+                <!-- OCR Section (Hidden by default) -->
+                <div id="ocrSection">
+                    <div class="form-group" style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-bottom: 25px;">
+                        <label style="color: #2563eb;">📎 Upload Receipt Image</label>
+                        <!-- Modified: Removed application/pdf from accept attribute -->
+                        <input type="file" id="receiptFile" name="receipt" accept="image/png, image/jpeg" style="border:none; padding-left:0;">
+                        <p style="font-size: 0.85rem; color: #64748b; margin-top: 5px;">Supports JPG, PNG</p>
+                        
+                        <div style="margin-top: 10px;">
+                            <button type="button" class="btn btn-secondary" onclick="extractOCR()" style="font-size: 0.9rem;">
+                                ✨ Extract Text from Receipt
+                            </button>
+                            <span id="ocrStatus" style="margin-left: 10px; font-weight: 500;"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Extracted Text (For verification)</label>
+                        <textarea name="receipt_text" id="receiptText" rows="3" placeholder="OCR text will appear here..." autocomplete="off"></textarea>
+                    </div>
+                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 25px 0;">
+                </div>
+
+                <!-- Common Fields -->
+                <div class="form-group">
+                    <label>Category</label>
+                    <select name="category_id" id="categorySelect" required autofocus>
+                        <option value="">Loading categories...</option>
+                    </select>
+
+                    <!-- LIVE BUDGET INFO BOX -->
+                    <div id="budgetInfo">
+                        <div class="budget-row">
+                            <span>Current Available:</span>
+                            <span id="currentBudget">Rs 0.00</span>
+                        </div>
+                        <div class="budget-row">
+                            <span>Remaining After This:</span>
+                            <span id="newBudget">Rs 0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Amount (Rs)</label>
+                    <input type="number" step="0.01" name="amount" id="amountInput" required placeholder="0.00" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" name="description" autocomplete="off">
+                </div>
+
+                <div style="margin-top: 30px;">
+                    <button type="submit" class="btn btn-primary">Save Expense</button>
+                    <a href="dashboard.html" class="btn btn-secondary" style="margin-left: 10px; text-decoration: none;">Cancel</a>
+                </div>
+
+            </form>
+        </div>
+    </main>
+</div>
+
+<script>
+let categoriesMap = {}; // Stores budget info: { id: remaining_amount }
+
+/* Mode Toggling */
+function toggleMode() {
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    const ocrSection = document.getElementById('ocrSection');
+    
+    if (mode === 'ocr') {
+        ocrSection.style.display = 'block';
+    } else {
+        ocrSection.style.display = 'none';
+    }
+}
+
+/* Load active categories & Populate Map */
+fetch("../php/get_active_categories.php")
+    .then(res => res.json())
+    .then(data => {
+        const select = document.getElementById("categorySelect");
+        select.innerHTML = '<option value="">Select category</option>';
+        
+        data.forEach(cat => {
+            // Store remaining amount for calculations
+            categoriesMap[cat.category_id] = parseFloat(cat.remaining);
+            
+            const option = document.createElement("option");
+            option.value = cat.category_id;
+            // Simplified option text since we have the live box now
+            option.textContent = cat.name; 
+            select.appendChild(option);
+        });
+    });
+
+/* Live Budget Update Logic */
+const categorySelect = document.getElementById("categorySelect");
+const amountInput = document.getElementById("amountInput");
+const budgetInfo = document.getElementById("budgetInfo");
+const currentBudgetEl = document.getElementById("currentBudget");
+const newBudgetEl = document.getElementById("newBudget");
+
+function updateBudgetDisplay() {
+    const catId = categorySelect.value;
+    const expenseAmount = parseFloat(amountInput.value) || 0;
+
+    // If no category selected, hide the box
+    if (!catId || !categoriesMap.hasOwnProperty(catId)) {
+        budgetInfo.style.display = 'none';
+        return;
+    }
+
+    const currentRemaining = categoriesMap[catId];
+    const finalRemaining = currentRemaining - expenseAmount;
+
+    // Show box
+    budgetInfo.style.display = 'block';
+    currentBudgetEl.textContent = 'Rs ' + currentRemaining.toLocaleString('en-US', {minimumFractionDigits: 2});
+    newBudgetEl.textContent = 'Rs ' + finalRemaining.toLocaleString('en-US', {minimumFractionDigits: 2});
+
+    // Style based on positive/negative
+    if (finalRemaining < 0) {
+        budgetInfo.classList.add('over-budget');
+        newBudgetEl.textContent += " (Over Budget!)";
+    } else {
+        budgetInfo.classList.remove('over-budget');
+    }
+}
+
+// Attach listeners
+categorySelect.addEventListener('change', updateBudgetDisplay);
+amountInput.addEventListener('input', updateBudgetDisplay);
+
+
+/* OCR extraction */
+async function extractOCR() {
+    const fileInput = document.getElementById("receiptFile");
+    const status    = document.getElementById("ocrStatus");
+    const textArea  = document.getElementById("receiptText");
+    const amountInput = document.querySelector('input[name="amount"]');
+
+    if (!fileInput.files.length) {
+        status.textContent = "Please select a file first";
+        status.style.color = "red";
+        return;
+    }
+
+    // --- PREVIEW MODE CHECK ---
+    if (window.location.protocol === 'blob:' || window.location.hostname.includes('googleusercontent') || window.location.hostname === '') {
+        console.warn("Running in Preview Mode. Backend PHP is unreachable.");
+        status.textContent = "⏳ Simulating OCR (Preview Mode)...";
+        status.style.color = "#2563eb";
+        
+        setTimeout(() => {
+            textArea.value = `[PREVIEW MODE - SIMULATED OCR RESULT]\nTotal: Rs 125.50`;
+            amountInput.value = "125.50";
+            amountInput.dispatchEvent(new Event('input')); // Trigger budget update
+            status.textContent = "✅ OCR Simulated";
+            status.style.color = "orange";
+        }, 1000);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("receipt", fileInput.files[0]);
+
+    status.textContent = "⏳ Extracting...";
+    status.style.color = "#2563eb";
+
+    try {
+        const response = await fetch("../php/ocr_extract.php", {
+            method: "POST",
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+
+        const rawText = await response.text();
+        let data;
+        try { data = JSON.parse(rawText); } catch (e) { throw new Error("Invalid Server JSON"); }
+
+        if (data.error) {
+            status.textContent = "❌ OCR Failed";
+            status.style.color = "red";
+            console.error("OCR Details:", data.details);
+            alert("OCR Failed: " + data.details);
+            return;
+        }
+
+        textArea.value = data.text || "";
+        
+        if (data.amount) {
+            amountInput.value = data.amount;
+            // Trigger the live budget update manually since JS changed the value
+            amountInput.dispatchEvent(new Event('input'));
+            
+            // Visual feedback
+            amountInput.style.backgroundColor = "#dcfce7"; 
+            setTimeout(() => { amountInput.style.backgroundColor = ""; }, 2000);
+            status.textContent = "✅ OCR: Amount Rs " + data.amount;
+        } else {
+            status.textContent = "✅ OCR completed (No amount found)";
+        }
+        status.style.color = "green";
+
+    } catch (err) {
+        console.error("OCR Error:", err);
+        status.textContent = "❌ " + err.message;
+        status.style.color = "red";
+    }
+}
+</script>
+
+</body>
+</html>
